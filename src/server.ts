@@ -1,42 +1,104 @@
 import express from "express";
+import cors from "cors"
+import { PrismaClient } from "@prisma/client"
+import { ConvertHourStringMinutes } from "./utils/ConvertHourStringMinutes";
+import { ConvertMinutesToHourString } from "./utils/ConvertMinutesToHourString";
 
 const app = express();
 
-app.get("/games", (req, res) => {
+app.use(express.json());
 
-    return res.json([]);
+app.use(cors());
+
+const prisma = new PrismaClient({
+    log: ["query"]
+});
+
+app.get("/games", async (req, res) => {
+
+    const games = await prisma.game.findMany({
+        include: {
+            _count: {
+                select: {
+                    ads: true
+                }
+            }
+        }
+    });
+    return res.json(games);
 
 });
 
-app.post("/ads", (req, res) => {
+app.post('/games/:id/ads', async (request, response) => {
+    const idGame = request.params.id
 
-    return res.status(201).json([]);
+    const body: any = request.body
 
-});
+    const ad = await prisma.ad.create({
+        data: {
+            idGame,
+            name: body.name,
+            yearsPlaying: body.yearsPlaying,
+            discord: body.discord,
+            weekDays: body.weekDays.join(','),
+            hourStart: ConvertHourStringMinutes(body.hourStart),
+            hourEnd: ConvertHourStringMinutes(body.hourEnd),
+            useVoiceChannel: body.useVoiceChannel
+        }
+    })
 
-app.get("/games/:id/ads", (req, res) => {
+    return response.status(201).json(ad)
+})
+
+app.get("/games/:id/ads", async (req, res) => {
 
     const idGame = req.params.id;
 
-    return res.json([
-        { id: 1, name: "Kevin" },
-        { id: 1, name: "Kevin" },
-        { id: 1, name: "Kevin" },
-        { id: 1, name: "Kevin" },
-    ]);
+    const ads = await prisma.ad.findMany({
+        select: {
+            id: true,
+            name: true,
+            weekDays: true,
+            useVoiceChannel: true,
+            yearsPlaying: true,
+            hourStart: true,
+            hourEnd: true
+        },
+        where: {
+            idGame,
+        },
+        orderBy: {
+            createdAt: "desc"
+        }
+    });
+
+    return res.json(ads.map(ad => {
+        return {
+            ...ad,
+            weekDays: ad.weekDays.split(","),
+            hourStart: ConvertMinutesToHourString(ad.hourStart),
+            hourEnd: ConvertMinutesToHourString(ad.hourEnd)
+        }
+    }));
 
 });
 
-app.get("/ads/:id/discord", (req, res) => {
+app.get("/ads/:id/discord", async (req, res) => {
 
-    const idAds = req.params.id;
+    const idAd = req.params.id;
 
-    return res.json([
-        { id: 1, name: "Kevin" },
-        { id: 1, name: "Kevin" },
-        { id: 1, name: "Kevin" },
-        { id: 1, name: "Kevin" },
-    ]);
+    const ad = await prisma.ad.findUniqueOrThrow({
+        select: {
+            discord: true
+        },
+        where: {
+            id: idAd
+        }
+    });
+
+    return res.json({
+        discord: ad.discord
+    });
 
 });
 
